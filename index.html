@@ -1,0 +1,124 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>JBL Farbwert-Auswertung</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 1em; background: #f5f5f5; }
+    #canvas { border: 1px solid #000; margin-top: 1em; max-width: 100%; height: auto; touch-action: none; }
+    .output { margin-top: 1em; }
+    #saveButton, #exportButton { margin-top: 1em; padding: 0.5em 1em; font-size: 1em; }
+    #log { margin-top: 1em; white-space: pre-line; background: #fff; padding: 1em; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <h2>JBL Farbwert-Auswertung (N, P, K)</h2>
+  <input type="file" id="upload" accept="image/*"><br>
+  <label for="testType">Test wählen:</label>
+  <select id="testType">
+    <option value="Nitrat (NO3)">Nitrat (NO3)</option>
+    <option value="Phosphat (PO4)">Phosphat (PO4)</option>
+    <option value="Kalium (K)">Kalium (K)</option>
+  </select>
+  <canvas id="canvas"></canvas>
+  <div class="output">
+    <p><strong>RGB:</strong> <span id="rgb">---</span></p>
+    <p><strong>HEX:</strong> <span id="hex">---</span></p>
+    <p><strong>Interpolierter Wert:</strong> <span id="interpolated">---</span></p>
+    <button id="saveButton">Messung speichern</button>
+    <button id="exportButton">CSV herunterladen</button>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    const jblColors = [/* RGB-Werte wie gehabt */];
+    const csvData = [];
+    const upload = document.getElementById('upload');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const testType = document.getElementById('testType');
+    const rgbOutput = document.getElementById('rgb');
+    const hexOutput = document.getElementById('hex');
+    const interpolatedOutput = document.getElementById('interpolated');
+    const saveButton = document.getElementById('saveButton');
+    const exportButton = document.getElementById('exportButton');
+    const log = document.getElementById('log');
+    let lastInterpolated = null;
+
+    upload.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        const img = new Image();
+        img.onload = function () {
+          let w = img.width;
+          let h = img.height;
+          const maxW = 800;
+          const maxH = 800;
+          if (w > maxW || h > maxH) {
+            const scale = Math.min(maxW / w, maxH / h);
+            w = Math.round(w * scale);
+            h = Math.round(h * scale);
+          }
+          canvas.width = w;
+          canvas.height = h;
+          ctx.drawImage(img, 0, 0, w, h);
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    canvas.addEventListener('click', function (e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const pixel = ctx.getImageData(x, y, 1, 1).data;
+      const rgb = [pixel[0], pixel[1], pixel[2]];
+      ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, 2 * Math.PI);
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      rgbOutput.textContent = rgb.join(', ');
+      hexOutput.textContent = rgbToHex(...rgb);
+      const selectedTest = testType.value;
+      const interpolated = interpolateValue(rgb, selectedTest);
+      interpolatedOutput.textContent = `${selectedTest} ≈ ${interpolated.toFixed(2)} mg/l`;
+      lastInterpolated = { test: selectedTest, value: interpolated.toFixed(2) };
+    });
+
+    saveButton.addEventListener('click', () => {
+      if (!lastInterpolated) return;
+      const now = new Date();
+      const timestamp = now.toLocaleString();
+      const test = lastInterpolated.test;
+      const value = lastInterpolated.value;
+      const entry = `${timestamp},${test},${value}`;
+      csvData.push([timestamp, test, value]);
+      log.textContent += `${timestamp} | ${test} ≈ ${value} mg/l\n`;
+    });
+
+    exportButton.addEventListener('click', () => {
+      const rows = [['Datum/Uhrzeit', 'Test', 'mg/l'], ...csvData];
+      const csvContent = rows.map(e => e.join(",")).join("\n");
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "jbl_messprotokoll.csv");
+      link.click();
+    });
+
+    function rgbToHex(r, g, b) {
+      return "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+    }
+
+    function interpolateValue(rgb, testName) {
+      return 0; // Dummy zur Demonstration
+    }
+  </script>
+</body>
+</html>
