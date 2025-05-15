@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -25,14 +24,38 @@
   <div class="output">
     <p><strong>RGB:</strong> <span id="rgb">---</span></p>
     <p><strong>HEX:</strong> <span id="hex">---</span></p>
+    <p><strong>Nächstliegender Tabellenwert:</strong> <span id="nearest">---</span></p>
     <p><strong>Interpolierter Wert:</strong> <span id="interpolated">---</span></p>
     <button id="saveButton">Messung speichern</button>
     <button id="exportButton">CSV herunterladen</button>
     <div id="log"></div>
   </div>
-
   <script>
-    const jblColors = [/* RGB-Werte wie gehabt */];
+    const jblColors = [
+      { test: 'Kalium (K)', value: 10, rgb: [230, 210, 180] },
+      { test: 'Kalium (K)', value: 20, rgb: [200, 180, 140] },
+      { test: 'Kalium (K)', value: 30, rgb: [170, 150, 110] },
+      { test: 'Nitrat (NO3)', value: 0.5, rgb: [137, 146, 141] },
+      { test: 'Nitrat (NO3)', value: 1, rgb: [161, 170, 167] },
+      { test: 'Nitrat (NO3)', value: 5, rgb: [169, 179, 178] },
+      { test: 'Nitrat (NO3)', value: 10, rgb: [175, 184, 183] },
+      { test: 'Nitrat (NO3)', value: 20, rgb: [176, 185, 184] },
+      { test: 'Nitrat (NO3)', value: 40, rgb: [172, 181, 182] },
+      { test: 'Nitrat (NO3)', value: 80, rgb: [175, 187, 187] },
+      { test: 'Nitrat (NO3)', value: 140, rgb: [171, 183, 183] },
+      { test: 'Nitrat (NO3)', value: 220, rgb: [154, 163, 161] },
+      { test: 'Nitrat (NO3)', value: 200, rgb: [93, 77, 61] },
+      { test: 'Phosphat (PO4)', value: 0.02, rgb: [132, 144, 143] },
+      { test: 'Phosphat (PO4)', value: 0.05, rgb: [137, 147, 146] },
+      { test: 'Phosphat (PO4)', value: 0.1, rgb: [144, 154, 155] },
+      { test: 'Phosphat (PO4)', value: 0.2, rgb: [137, 147, 148] },
+      { test: 'Phosphat (PO4)', value: 0.4, rgb: [136, 146, 146] },
+      { test: 'Phosphat (PO4)', value: 0.6, rgb: [150, 161, 161] },
+      { test: 'Phosphat (PO4)', value: 0.8, rgb: [138, 150, 150] },
+      { test: 'Phosphat (PO4)', value: 1.2, rgb: [142, 156, 157] },
+      { test: 'Phosphat (PO4)', value: 1.8, rgb: [131, 135, 132] }
+    ];
+
     const csvData = [];
     const upload = document.getElementById('upload');
     const canvas = document.getElementById('canvas');
@@ -41,6 +64,7 @@
     const rgbOutput = document.getElementById('rgb');
     const hexOutput = document.getElementById('hex');
     const interpolatedOutput = document.getElementById('interpolated');
+    const nearestOutput = document.getElementById('nearest');
     const saveButton = document.getElementById('saveButton');
     const exportButton = document.getElementById('exportButton');
     const log = document.getElementById('log');
@@ -86,7 +110,9 @@
       hexOutput.textContent = rgbToHex(...rgb);
       const selectedTest = testType.value;
       const interpolated = interpolateValue(rgb, selectedTest);
+      const nearest = findClosestMatch(rgb, selectedTest);
       interpolatedOutput.textContent = `${selectedTest} ≈ ${interpolated.toFixed(2)} mg/l`;
+      nearestOutput.textContent = `${nearest.value} mg/l`;
       lastInterpolated = { test: selectedTest, value: interpolated.toFixed(2) };
     });
 
@@ -94,11 +120,9 @@
       if (!lastInterpolated) return;
       const now = new Date();
       const timestamp = now.toLocaleString();
-      const test = lastInterpolated.test;
-      const value = lastInterpolated.value;
-      const entry = `${timestamp},${test},${value}`;
-      csvData.push([timestamp, test, value]);
-      log.textContent += `${timestamp} | ${test} ≈ ${value} mg/l\n`;
+      csvData.push([timestamp, lastInterpolated.test, lastInterpolated.value]);
+      log.textContent += `${timestamp} | ${lastInterpolated.test} ≈ ${lastInterpolated.value} mg/l
+`;
     });
 
     exportButton.addEventListener('click', () => {
@@ -116,8 +140,37 @@
       return "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
     }
 
+    function colorDistance(c1, c2) {
+      return Math.sqrt(c1.reduce((acc, val, i) => acc + (val - c2[i]) ** 2, 0));
+    }
+
+    function findClosestMatch(rgb, testName) {
+      const subset = jblColors.filter(c => c.test === testName);
+      return subset.reduce((closest, current) => {
+        const dist = colorDistance(rgb, current.rgb);
+        return dist < colorDistance(rgb, closest.rgb) ? current : closest;
+      });
+    }
+
     function interpolateValue(rgb, testName) {
-      return 0; // Dummy zur Demonstration
+      const subset = jblColors.filter(c => c.test === testName).sort((a, b) => a.value - b.value);
+      let bestPair = null;
+      let minDistSum = Infinity;
+      for (let i = 0; i < subset.length - 1; i++) {
+        const dist1 = colorDistance(rgb, subset[i].rgb);
+        const dist2 = colorDistance(rgb, subset[i + 1].rgb);
+        const distSum = dist1 + dist2;
+        if (distSum < minDistSum) {
+          minDistSum = distSum;
+          bestPair = [subset[i], subset[i + 1]];
+        }
+      }
+      if (!bestPair) return subset[0].value;
+      const [c1, c2] = bestPair;
+      const d1 = colorDistance(rgb, c1.rgb);
+      const d2 = colorDistance(rgb, c2.rgb);
+      const weight = d2 / (d1 + d2);
+      return c1.value * weight + c2.value * (1 - weight);
     }
   </script>
 </body>
