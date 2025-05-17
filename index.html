@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>pH-Auswertung (automatische Farbskala)</title>
+  <title>pH-Auswertung mit Markeranzeige (BMUT)</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 1em; background: #f5f5f5; }
     canvas { border: 1px solid #000; margin-top: 1em; max-width: 100%; height: auto; }
@@ -12,9 +12,9 @@
   </style>
 </head>
 <body>
-  <h2>pH-Auswertung mit Referenz- und Testbild (BMUT)</h2>
+  <h2>pH-Auswertung mit Marker und Referenzautomatik</h2>
 
-  <p><strong>1. Referenzbild mit Farbskala hochladen:</strong></p>
+  <p><strong>1. Referenzbild hochladen:</strong></p>
   <input type="file" id="refUpload" accept="image/*">
   <canvas id="refCanvas"></canvas>
 
@@ -33,9 +33,41 @@
 
 <script>
 let refColors = [];
+let lastPH = null;
 const csvData = [];
 
-function drawImageOnCanvas(fileInput, canvasId, callback) {
+function drawAndExtractReference(canvas, ctx, img) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  refColors = [];
+  ctx.strokeStyle = "red";
+  ctx.lineWidth = 2;
+
+  if (canvas.width >= canvas.height) {
+    const y = canvas.height / 2;
+    for (let i = 0; i < 14; i++) {
+      const x = (i + 0.5) * canvas.width / 14;
+      const data = ctx.getImageData(x, y, 1, 1).data;
+      refColors.push({ value: i + 1, rgb: [data[0], data[1], data[2]] });
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+  } else {
+    const x = canvas.width / 2;
+    for (let i = 0; i < 14; i++) {
+      const y = (i + 0.5) * canvas.height / 14;
+      const data = ctx.getImageData(x, y, 1, 1).data;
+      refColors.push({ value: i + 1, rgb: [data[0], data[1], data[2]] });
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+  }
+}
+
+function loadImage(fileInput, canvasId, drawCallback) {
   const file = fileInput.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -47,44 +79,22 @@ function drawImageOnCanvas(fileInput, canvasId, callback) {
       const scale = Math.min(800 / img.width, 800 / img.height, 1);
       canvas.width = img.width * scale;
       canvas.height = img.height * scale;
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      callback(ctx, canvas);
+      drawCallback(canvas, ctx, img);
     };
     img.src = event.target.result;
   };
   reader.readAsDataURL(file);
 }
 
-// Automatische Referenzfarben aus horizontaler Skala extrahieren
 document.getElementById("refUpload").addEventListener("change", () => {
-  drawImageOnCanvas(document.getElementById("refUpload"), "refCanvas", (ctx, canvas) => {
-    refColors = [];
-    const y = canvas.height / 2;
-    
-    if (canvas.width >= canvas.height) {
-      const y = canvas.height / 2;
-      for (let i = 0; i < 14; i++) {
-        const x = (i + 0.5) * canvas.width / 14;
-        const data = ctx.getImageData(x, y, 1, 1).data;
-        refColors.push({ value: i + 1, rgb: [data[0], data[1], data[2]] });
-      }
-    } else {
-      const x = canvas.width / 2;
-      for (let i = 0; i < 14; i++) {
-        const y = (i + 0.5) * canvas.height / 14;
-        const data = ctx.getImageData(x, y, 1, 1).data;
-        refColors.push({ value: i + 1, rgb: [data[0], data[1], data[2]] });
-      }
-    }
-
-      refColors.push({ value: i + 1, rgb: [data[0], data[1], data[2]] });
-    }
-    alert("Farbreferenz erfolgreich geladen.");
-  });
+  loadImage(document.getElementById("refUpload"), "refCanvas", drawAndExtractReference);
 });
 
 document.getElementById("testUpload").addEventListener("change", () => {
-  drawImageOnCanvas(document.getElementById("testUpload"), "testCanvas", () => {});
+  loadImage(document.getElementById("testUpload"), "testCanvas", (canvas, ctx, img) => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  });
 });
 
 document.getElementById("testCanvas").addEventListener("click", function (e) {
@@ -97,6 +107,10 @@ document.getElementById("testCanvas").addEventListener("click", function (e) {
   const rgb = [pixel[0], pixel[1], pixel[2]];
   document.getElementById("rgb").textContent = rgb.join(", ");
   document.getElementById("hex").textContent = rgbToHex(...rgb);
+  ctx.beginPath();
+  ctx.arc(x, y, 5, 0, 2 * Math.PI);
+  ctx.strokeStyle = "blue";
+  ctx.stroke();
   const interpolated = interpolatePH(rgb);
   document.getElementById("interpolated").textContent = `pH ≈ ${interpolated.toFixed(2)}`;
   lastPH = interpolated.toFixed(2);
@@ -131,8 +145,6 @@ function interpolatePH(rgb) {
   const t = d2 / (d1 + d2);
   return a.value * t + b.value * (1 - t);
 }
-
-let lastPH = null;
 
 document.getElementById("saveButton").addEventListener("click", () => {
   if (!lastPH) return;
