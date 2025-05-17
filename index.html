@@ -2,135 +2,157 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>pH-Auswertung mit Lackmuspapier</title>
+  <title>pH-Auswertung (automatische Farbskala)</title>
   <style>
     body { font-family: Arial, sans-serif; padding: 1em; background: #f5f5f5; }
-    #canvas { border: 1px solid #000; margin-top: 1em; max-width: 100%; height: auto; touch-action: none; }
+    canvas { border: 1px solid #000; margin-top: 1em; max-width: 100%; height: auto; }
     .output { margin-top: 1em; }
-    #saveButton, #exportButton { margin-top: 1em; padding: 0.5em 1em; font-size: 1em; }
+    button { margin-top: 1em; padding: 0.5em 1em; font-size: 1em; }
     #log { margin-top: 1em; white-space: pre-line; background: #fff; padding: 1em; border: 1px solid #ccc; }
   </style>
 </head>
 <body>
-  <h2>pH-Auswertung mit Lackmuspapier</h2>
-  <input type="file" id="upload" accept="image/*"><br>
-  <canvas id="canvas"></canvas>
+  <h2>pH-Auswertung mit Referenz- und Testbild (BMUT)</h2>
+
+  <p><strong>1. Referenzbild mit Farbskala hochladen:</strong></p>
+  <input type="file" id="refUpload" accept="image/*">
+  <canvas id="refCanvas"></canvas>
+
+  <p><strong>2. Testbild hochladen und Farbe klicken:</strong></p>
+  <input type="file" id="testUpload" accept="image/*">
+  <canvas id="testCanvas"></canvas>
+
   <div class="output">
     <p><strong>RGB:</strong> <span id="rgb">---</span></p>
     <p><strong>HEX:</strong> <span id="hex">---</span></p>
-    <p><strong>Nächstliegender pH-Wert:</strong> <span id="nearest">---</span></p>
+    <p><strong>Interpolierter pH-Wert:</strong> <span id="interpolated">---</span></p>
     <button id="saveButton">Messung speichern</button>
     <button id="exportButton">CSV herunterladen</button>
     <div id="log"></div>
   </div>
-  <script>
-    const phColors = [
-      { value: 1, rgb: [255, 0, 0] },
-      { value: 2, rgb: [255, 51, 0] },
-      { value: 3, rgb: [255, 102, 0] },
-      { value: 4, rgb: [255, 153, 0] },
-      { value: 5, rgb: [255, 204, 0] },
-      { value: 6, rgb: [204, 255, 0] },
-      { value: 7, rgb: [0, 255, 0] },
-      { value: 8, rgb: [0, 255, 102] },
-      { value: 9, rgb: [0, 255, 204] },
-      { value: 10, rgb: [0, 204, 255] },
-      { value: 11, rgb: [0, 102, 255] },
-      { value: 12, rgb: [0, 0, 255] },
-      { value: 13, rgb: [102, 0, 204] },
-      { value: 14, rgb: [153, 0, 204] }
-    ];
 
-    const csvData = [];
-    const upload = document.getElementById('upload');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const rgbOutput = document.getElementById('rgb');
-    const hexOutput = document.getElementById('hex');
-    const nearestOutput = document.getElementById('nearest');
-    const saveButton = document.getElementById('saveButton');
-    const exportButton = document.getElementById('exportButton');
-    const log = document.getElementById('log');
-    let lastPH = null;
+<script>
+let refColors = [];
+const csvData = [];
 
-    upload.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = function (event) {
-        const img = new Image();
-        img.onload = function () {
-          let w = img.width;
-          let h = img.height;
-          const maxW = 800;
-          const maxH = 800;
-          if (w > maxW || h > maxH) {
-            const scale = Math.min(maxW / w, maxH / h);
-            w = Math.round(w * scale);
-            h = Math.round(h * scale);
-          }
-          canvas.width = w;
-          canvas.height = h;
-          ctx.drawImage(img, 0, 0, w, h);
-        };
-        img.src = event.target.result;
-      };
-      reader.readAsDataURL(file);
-    });
+function drawImageOnCanvas(fileInput, canvasId, callback) {
+  const file = fileInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (event) {
+    const img = new Image();
+    img.onload = function () {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext("2d");
+      const scale = Math.min(800 / img.width, 800 / img.height, 1);
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      callback(ctx, canvas);
+    };
+    img.src = event.target.result;
+  };
+  reader.readAsDataURL(file);
+}
 
-    canvas.addEventListener('click', function (e) {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const pixel = ctx.getImageData(x, y, 1, 1).data;
-      const rgb = [pixel[0], pixel[1], pixel[2]];
-      ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height);
-      ctx.beginPath();
-      ctx.arc(x, y, 5, 0, 2 * Math.PI);
-      ctx.strokeStyle = "red";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      rgbOutput.textContent = rgb.join(', ');
-      hexOutput.textContent = rgbToHex(...rgb);
-      const nearest = findClosestMatch(rgb);
-      nearestOutput.textContent = `pH ≈ ${nearest.value}`;
-      lastPH = { value: nearest.value };
-    });
+// Automatische Referenzfarben aus horizontaler Skala extrahieren
+document.getElementById("refUpload").addEventListener("change", () => {
+  drawImageOnCanvas(document.getElementById("refUpload"), "refCanvas", (ctx, canvas) => {
+    refColors = [];
+    const y = canvas.height / 2;
+    
+    if (canvas.width >= canvas.height) {
+      const y = canvas.height / 2;
+      for (let i = 0; i < 14; i++) {
+        const x = (i + 0.5) * canvas.width / 14;
+        const data = ctx.getImageData(x, y, 1, 1).data;
+        refColors.push({ value: i + 1, rgb: [data[0], data[1], data[2]] });
+      }
+    } else {
+      const x = canvas.width / 2;
+      for (let i = 0; i < 14; i++) {
+        const y = (i + 0.5) * canvas.height / 14;
+        const data = ctx.getImageData(x, y, 1, 1).data;
+        refColors.push({ value: i + 1, rgb: [data[0], data[1], data[2]] });
+      }
+    }
 
-    saveButton.addEventListener('click', () => {
-      if (!lastPH) return;
-      const now = new Date();
-      const timestamp = now.toLocaleString();
-      csvData.push([timestamp, lastPH.value]);
-      log.textContent += `${timestamp} | pH ≈ ${lastPH.value}
+      refColors.push({ value: i + 1, rgb: [data[0], data[1], data[2]] });
+    }
+    alert("Farbreferenz erfolgreich geladen.");
+  });
+});
+
+document.getElementById("testUpload").addEventListener("change", () => {
+  drawImageOnCanvas(document.getElementById("testUpload"), "testCanvas", () => {});
+});
+
+document.getElementById("testCanvas").addEventListener("click", function (e) {
+  const canvas = document.getElementById("testCanvas");
+  const ctx = canvas.getContext("2d");
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const pixel = ctx.getImageData(x, y, 1, 1).data;
+  const rgb = [pixel[0], pixel[1], pixel[2]];
+  document.getElementById("rgb").textContent = rgb.join(", ");
+  document.getElementById("hex").textContent = rgbToHex(...rgb);
+  const interpolated = interpolatePH(rgb);
+  document.getElementById("interpolated").textContent = `pH ≈ ${interpolated.toFixed(2)}`;
+  lastPH = interpolated.toFixed(2);
+});
+
+function rgbToHex(r, g, b) {
+  return "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+function colorDistance(c1, c2) {
+  return Math.sqrt(c1.reduce((acc, val, i) => acc + (val - c2[i]) ** 2, 0));
+}
+
+function interpolatePH(rgb) {
+  if (refColors.length < 2) return 0;
+  const sorted = refColors.slice().sort((a, b) => a.value - b.value);
+  let bestPair = null;
+  let minDist = Infinity;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const d1 = colorDistance(rgb, sorted[i].rgb);
+    const d2 = colorDistance(rgb, sorted[i + 1].rgb);
+    const sum = d1 + d2;
+    if (sum < minDist) {
+      minDist = sum;
+      bestPair = [sorted[i], sorted[i + 1]];
+    }
+  }
+  if (!bestPair) return sorted[0].value;
+  const [a, b] = bestPair;
+  const d1 = colorDistance(rgb, a.rgb);
+  const d2 = colorDistance(rgb, b.rgb);
+  const t = d2 / (d1 + d2);
+  return a.value * t + b.value * (1 - t);
+}
+
+let lastPH = null;
+
+document.getElementById("saveButton").addEventListener("click", () => {
+  if (!lastPH) return;
+  const now = new Date();
+  const timestamp = now.toLocaleString();
+  csvData.push([timestamp, lastPH]);
+  document.getElementById("log").textContent += `${timestamp} | pH ≈ ${lastPH}
 `;
-    });
+});
 
-    exportButton.addEventListener('click', () => {
-      const rows = [['Datum/Uhrzeit', 'pH-Wert'], ...csvData];
-      const csvContent = rows.map(e => e.join(",")).join("
-");
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.setAttribute("href", url);
-      link.setAttribute("download", "ph_messprotokoll.csv");
-      link.click();
-    });
-
-    function rgbToHex(r, g, b) {
-      return "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
-    }
-
-    function colorDistance(c1, c2) {
-      return Math.sqrt(c1.reduce((acc, val, i) => acc + (val - c2[i]) ** 2, 0));
-    }
-
-    function findClosestMatch(rgb) {
-      return phColors.reduce((closest, current) => {
-        const dist = colorDistance(rgb, current.rgb);
-        return dist < colorDistance(rgb, closest.rgb) ? current : closest;
-      });
-    }
-  </script>
+document.getElementById("exportButton").addEventListener("click", () => {
+  const rows = [["Datum/Uhrzeit", "pH-Wert"], ...csvData];
+  const csv = rows.map(e => e.join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", "ph_messprotokoll.csv");
+  link.click();
+});
+</script>
 </body>
 </html>
