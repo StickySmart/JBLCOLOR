@@ -48,21 +48,39 @@ function drawAndExtractReference(canvas, ctx, img) {
     const y = canvas.height / 2;
     for (let i = 0; i < 14; i++) {
       const x = (i + 0.5) * canvas.width / 14;
-      const data = ctx.getImageData(x, y, 1, 1).data;
+      
+    const area = ctx.getImageData(x - 5, y - 5, 10, 10).data;
+    let r = 0, g = 0, b = 0, count = 0;
+    for (let j = 0; j < area.length; j += 4) {
+      r += area[j];
+      g += area[j + 1];
+      b += area[j + 2];
+      count++;
+    }
+    const avg = [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
+    refColors.push({ value: i + 1, rgb: avg });
+    
       refColors.push({ value: i + 1, rgb: [data[0], data[1], data[2]] });
-      ctx.beginPath();
-      ctx.arc(x, y, 5, 0, 2 * Math.PI);
-      ctx.stroke();
+      ctx.strokeRect(x - 5, y - 5, 10, 10);
     }
   } else {
     const x = canvas.width / 2;
     for (let i = 0; i < 14; i++) {
       const y = (i + 0.5) * canvas.height / 14;
-      const data = ctx.getImageData(x, y, 1, 1).data;
+      
+    const area = ctx.getImageData(x - 5, y - 5, 10, 10).data;
+    let r = 0, g = 0, b = 0, count = 0;
+    for (let j = 0; j < area.length; j += 4) {
+      r += area[j];
+      g += area[j + 1];
+      b += area[j + 2];
+      count++;
+    }
+    const avg = [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
+    refColors.push({ value: i + 1, rgb: avg });
+    
       refColors.push({ value: i + 1, rgb: [data[0], data[1], data[2]] });
-      ctx.beginPath();
-      ctx.arc(x, y, 5, 0, 2 * Math.PI);
-      ctx.stroke();
+      ctx.strokeRect(x - 5, y - 5, 10, 10);
     }
   }
 }
@@ -103,14 +121,23 @@ document.getElementById("testCanvas").addEventListener("click", function (e) {
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
-  const pixel = ctx.getImageData(x, y, 1, 1).data;
+  
+    const area = ctx.getImageData(x - 5, y - 5, 10, 10).data;
+    let r = 0, g = 0, b = 0, count = 0;
+    for (let i = 0; i < area.length; i += 4) {
+      r += area[i];
+      g += area[i + 1];
+      b += area[i + 2];
+      count++;
+    }
+    const rgb = [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
+    
   const rgb = [pixel[0], pixel[1], pixel[2]];
   document.getElementById("rgb").textContent = rgb.join(", ");
   document.getElementById("hex").textContent = rgbToHex(...rgb);
-  ctx.beginPath();
-  ctx.arc(x, y, 5, 0, 2 * Math.PI);
   ctx.strokeStyle = "blue";
-  ctx.stroke();
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x - 5, y - 5, 10, 10);
   const interpolated = interpolatePH(rgb);
   document.getElementById("interpolated").textContent = `pH ≈ ${interpolated.toFixed(2)}`;
   lastPH = interpolated.toFixed(2);
