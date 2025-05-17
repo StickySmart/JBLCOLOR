@@ -2,196 +2,109 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>pH-Auswertung mit Markeranzeige (BMUT)</title>
+  <title>pH-Auswertung mit Marker</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 1em; background: #f5f5f5; }
-    canvas { border: 1px solid #000; margin-top: 1em; max-width: 100%; height: auto; }
-    .output { margin-top: 1em; }
-    button { margin-top: 1em; padding: 0.5em 1em; font-size: 1em; }
-    #log { margin-top: 1em; white-space: pre-line; background: #fff; padding: 1em; border: 1px solid #ccc; }
+    body { font-family: Arial, sans-serif; padding: 1em; background: #f0f0f0; }
+    canvas { border: 1px solid #000; margin: 1em 0; max-width: 100%; }
   </style>
 </head>
 <body>
-  <h2>pH-Auswertung mit Marker und Referenzautomatik</h2>
-
-  <p><strong>1. Referenzbild hochladen:</strong></p>
-  <input type="file" id="refUpload" accept="image/*">
+  <h2>pH-Auswertung</h2>
+  <p><strong>1. Referenzbild hochladen (mit 14 Feldern):</strong></p>
+  <input type="file" id="refUpload" accept="image/*"><br>
   <canvas id="refCanvas"></canvas>
 
-  <p><strong>2. Testbild hochladen und Farbe klicken:</strong></p>
-  <input type="file" id="testUpload" accept="image/*">
+  <p><strong>2. Testbild hochladen:</strong></p>
+  <input type="file" id="testUpload" accept="image/*"><br>
   <canvas id="testCanvas"></canvas>
 
-  <div class="output">
-    <p><strong>RGB:</strong> <span id="rgb">---</span></p>
-    <p><strong>HEX:</strong> <span id="hex">---</span></p>
-    <p><strong>Interpolierter pH-Wert:</strong> <span id="interpolated">---</span></p>
-    <button id="saveButton">Messung speichern</button>
-    <button id="exportButton">CSV herunterladen</button>
-    <div id="log"></div>
-  </div>
+  <p><strong>Interpolierter pH-Wert:</strong> <span id="phResult">---</span></p>
 
 <script>
 let refColors = [];
-let lastPH = null;
-const csvData = [];
 
-function drawAndExtractReference(canvas, ctx, img) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-  refColors = [];
-  ctx.strokeStyle = "red";
-  ctx.lineWidth = 2;
-
-  if (canvas.width >= canvas.height) {
-    const y = canvas.height / 2;
-    for (let i = 0; i < 14; i++) {
-      const x = (i + 0.5) * canvas.width / 14;
-      
-    const area = ctx.getImageData(x - 5, y - 5, 10, 10).data;
-    let r = 0, g = 0, b = 0, count = 0;
-    for (let j = 0; j < area.length; j += 4) {
-      r += area[j];
-      g += area[j + 1];
-      b += area[j + 2];
-      count++;
-    }
-    const avg = [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
-    refColors.push({ value: i + 1, rgb: avg });
-    
-      refColors.push({ value: i + 1, rgb: [data[0], data[1], data[2]] });
-      ctx.strokeRect(x - 5, y - 5, 10, 10);
-    }
-  } else {
-    const x = canvas.width / 2;
-    for (let i = 0; i < 14; i++) {
-      const y = (i + 0.5) * canvas.height / 14;
-      
-    const area = ctx.getImageData(x - 5, y - 5, 10, 10).data;
-    let r = 0, g = 0, b = 0, count = 0;
-    for (let j = 0; j < area.length; j += 4) {
-      r += area[j];
-      g += area[j + 1];
-      b += area[j + 2];
-      count++;
-    }
-    const avg = [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
-    refColors.push({ value: i + 1, rgb: avg });
-    
-      refColors.push({ value: i + 1, rgb: [data[0], data[1], data[2]] });
-      ctx.strokeRect(x - 5, y - 5, 10, 10);
-    }
-  }
-}
-
-function loadImage(fileInput, canvasId, drawCallback) {
-  const file = fileInput.files[0];
-  if (!file) return;
+function loadAndDraw(imgFile, canvas, callback) {
   const reader = new FileReader();
-  reader.onload = function (event) {
+  reader.onload = (e) => {
     const img = new Image();
-    img.onload = function () {
-      const canvas = document.getElementById(canvasId);
-      const ctx = canvas.getContext("2d");
+    img.onload = () => {
       const scale = Math.min(800 / img.width, 800 / img.height, 1);
       canvas.width = img.width * scale;
       canvas.height = img.height * scale;
-      drawCallback(canvas, ctx, img);
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      callback(ctx, canvas);
     };
-    img.src = event.target.result;
+    img.src = e.target.result;
   };
-  reader.readAsDataURL(file);
+  reader.readAsDataURL(imgFile);
 }
 
-document.getElementById("refUpload").addEventListener("change", () => {
-  loadImage(document.getElementById("refUpload"), "refCanvas", drawAndExtractReference);
-});
-
-document.getElementById("testUpload").addEventListener("change", () => {
-  loadImage(document.getElementById("testUpload"), "testCanvas", (canvas, ctx, img) => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+document.getElementById("refUpload").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  const canvas = document.getElementById("refCanvas");
+  loadAndDraw(file, canvas, (ctx, canvas) => {
+    refColors = [];
+    const horizontal = canvas.width >= canvas.height;
+    for (let i = 0; i < 14; i++) {
+      const x = horizontal ? (i + 0.5) * canvas.width / 14 : canvas.width / 2;
+      const y = horizontal ? canvas.height / 2 : (i + 0.5) * canvas.height / 14;
+      const data = ctx.getImageData(x - 5, y - 5, 10, 10).data;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let j = 0; j < data.length; j += 4) {
+        r += data[j]; g += data[j+1]; b += data[j+2]; n++;
+      }
+      refColors.push({ value: i + 1, rgb: [r/n, g/n, b/n] });
+      ctx.strokeStyle = "red";
+      ctx.strokeRect(x - 5, y - 5, 10, 10);
+    }
   });
 });
 
-document.getElementById("testCanvas").addEventListener("click", function (e) {
+document.getElementById("testUpload").addEventListener("change", (e) => {
+  const file = e.target.files[0];
   const canvas = document.getElementById("testCanvas");
-  const ctx = canvas.getContext("2d");
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  
-    const area = ctx.getImageData(x - 5, y - 5, 10, 10).data;
-    let r = 0, g = 0, b = 0, count = 0;
-    for (let i = 0; i < area.length; i += 4) {
-      r += area[i];
-      g += area[i + 1];
-      b += area[i + 2];
-      count++;
-    }
-    const rgb = [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
-    
-  const rgb = [pixel[0], pixel[1], pixel[2]];
-  document.getElementById("rgb").textContent = rgb.join(", ");
-  document.getElementById("hex").textContent = rgbToHex(...rgb);
-  ctx.strokeStyle = "blue";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x - 5, y - 5, 10, 10);
-  const interpolated = interpolatePH(rgb);
-  document.getElementById("interpolated").textContent = `pH ≈ ${interpolated.toFixed(2)}`;
-  lastPH = interpolated.toFixed(2);
+  loadAndDraw(file, canvas, (ctx, canvas) => {
+    canvas.onclick = (evt) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = evt.clientX - rect.left;
+      const y = evt.clientY - rect.top;
+      const data = ctx.getImageData(x - 5, y - 5, 10, 10).data;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        r += data[i]; g += data[i+1]; b += data[i+2]; n++;
+      }
+      const rgb = [r/n, g/n, b/n];
+      ctx.strokeStyle = "blue";
+      ctx.strokeRect(x - 5, y - 5, 10, 10);
+      const ph = interpolatePH(rgb);
+      document.getElementById("phResult").textContent = "pH ≈ " + ph.toFixed(2);
+    };
+  });
 });
 
-function rgbToHex(r, g, b) {
-  return "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
-}
-
 function colorDistance(c1, c2) {
-  return Math.sqrt(c1.reduce((acc, val, i) => acc + (val - c2[i]) ** 2, 0));
+  return Math.sqrt(c1.reduce((sum, val, i) => sum + (val - c2[i])**2, 0));
 }
 
 function interpolatePH(rgb) {
   if (refColors.length < 2) return 0;
-  const sorted = refColors.slice().sort((a, b) => a.value - b.value);
-  let bestPair = null;
-  let minDist = Infinity;
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const d1 = colorDistance(rgb, sorted[i].rgb);
-    const d2 = colorDistance(rgb, sorted[i + 1].rgb);
-    const sum = d1 + d2;
-    if (sum < minDist) {
-      minDist = sum;
-      bestPair = [sorted[i], sorted[i + 1]];
+  let best = [refColors[0], refColors[1]];
+  let minSum = Infinity;
+  for (let i = 0; i < refColors.length - 1; i++) {
+    const d1 = colorDistance(rgb, refColors[i].rgb);
+    const d2 = colorDistance(rgb, refColors[i+1].rgb);
+    if (d1 + d2 < minSum) {
+      minSum = d1 + d2;
+      best = [refColors[i], refColors[i+1]];
     }
   }
-  if (!bestPair) return sorted[0].value;
-  const [a, b] = bestPair;
+  const [a, b] = best;
   const d1 = colorDistance(rgb, a.rgb);
   const d2 = colorDistance(rgb, b.rgb);
-  const t = d2 / (d1 + d2);
-  return a.value * t + b.value * (1 - t);
+  return a.value * (d2 / (d1 + d2)) + b.value * (d1 / (d1 + d2));
 }
-
-document.getElementById("saveButton").addEventListener("click", () => {
-  if (!lastPH) return;
-  const now = new Date();
-  const timestamp = now.toLocaleString();
-  csvData.push([timestamp, lastPH]);
-  document.getElementById("log").textContent += `${timestamp} | pH ≈ ${lastPH}
-`;
-});
-
-document.getElementById("exportButton").addEventListener("click", () => {
-  const rows = [["Datum/Uhrzeit", "pH-Wert"], ...csvData];
-  const csv = rows.map(e => e.join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", "ph_messprotokoll.csv");
-  link.click();
-});
 </script>
 </body>
 </html>
